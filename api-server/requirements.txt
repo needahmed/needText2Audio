@@ -6,4 +6,5 @@ torch
 torchaudio
 pydantic>=2.0
 spacy>=3.7.0
-soundfile 
+soundfile
+gunicorn 
