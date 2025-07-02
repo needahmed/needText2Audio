@@ -94,26 +94,22 @@ export default function Home() {
       setTokens(allTokens.join(' '));
 
       if (audioUrls.length > 0) {
-        if (audioUrls.length === 1) {
-          setAudioUrl(audioUrls[0]);
-        } else {
-          setLoadingMessage(
-            <div>
-              <p>Generation complete!</p>
-              <p className="font-semibold">Combining {audioUrls.length} audio files...</p>
-            </div>
-          );
-          const combinedAudioBlob = await fetchAndCombineAudio(audioUrls, (progress) => {
-             setLoadingMessage(
-                <div>
-                  <p>Downloading & merging audio...</p>
-                  <p className="font-semibold">Progress: {Math.round(progress * 100)}%</p>
-                </div>
-              );
-          });
-          const blobUrl = URL.createObjectURL(combinedAudioBlob);
-          setAudioUrl(blobUrl);
-        }
+        setLoadingMessage(
+          <div>
+            <p>Generation complete!</p>
+            <p className="font-semibold">Preparing audio...</p>
+          </div>
+        );
+        const combinedAudioBlob = await fetchAndCombineAudio(audioUrls, (progress) => {
+            setLoadingMessage(
+              <div>
+                <p>Downloading & merging audio...</p>
+                <p className="font-semibold">Progress: {Math.round(progress * 100)}%</p>
+              </div>
+            );
+        });
+        const blobUrl = URL.createObjectURL(combinedAudioBlob);
+        setAudioUrl(blobUrl);
       } else {
         throw new Error("No audio was generated from any text chunk.");
       }
