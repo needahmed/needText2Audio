@@ -1,6 +1,5 @@
 'use client';
 
-import { useState } from 'react';
 import { cn, sampleTexts, getRandomSampleText } from '@/lib/utils';
 
 interface TextInputProps {

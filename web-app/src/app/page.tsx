@@ -114,8 +114,9 @@ export default function Home() {
         throw new Error("No audio was generated from any text chunk.");
       }
       
-    } catch (err: any) {
-      setError(err.response?.data?.detail || err.message || 'An unknown error occurred during generation.');
+    } catch (err: unknown) {
+      const error = err as { response?: { data?: { detail?: string } }; message?: string };
+      setError(error.response?.data?.detail || error.message || 'An unknown error occurred during generation.');
       console.error('Generation failed:', err);
     } finally {
       setIsLoading(false);

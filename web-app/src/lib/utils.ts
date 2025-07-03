@@ -145,7 +145,7 @@ function audioBufferToWavBlob(buffer: AudioBuffer): Blob {
  * @returns A Promise that resolves with a single Blob of the concatenated audio.
  */
 export async function fetchAndCombineAudio(audioUrls: string[], onProgress: (progress: number) => void): Promise<Blob> {
-  const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+  const audioContext = new (window.AudioContext || (window as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext)();
   
   const audioBuffers = await Promise.all(
     audioUrls.map(async (url, index) => {
