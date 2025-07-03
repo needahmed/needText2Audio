@@ -5,6 +5,8 @@ import tempfile
 import numpy as np
 from typing import Tuple, Optional
 import soundfile as sf
+import threading
+import time
 
 # Add parent directory to path to import kokoro
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -14,6 +16,8 @@ class TTSService:
         self.models = {}
         self.pipelines = {}
         self.initialized = False
+        self.initialization_in_progress = False
+        self.initialization_error = None
         self.cuda_available = torch.cuda.is_available()
         
         # Voice choices from original app.py
@@ -49,48 +53,66 @@ class TTSService:
         }
         
     def initialize(self):
-        """Initialize models and pipelines with lazy loading"""
-        if self.initialized:
+        """Initialize models and pipelines with better error handling"""
+        if self.initialized or self.initialization_in_progress:
             return
             
-        try:
-            # Try to import and initialize the minimum required components
-            from kokoro import KModel, KPipeline
-            
-            # Initialize models (CPU and GPU if available)
-            print("Loading CPU model...")
-            self.models = {
-                False: KModel().to('cpu').eval()
-            }
-            if self.cuda_available:
-                print("Loading GPU model...")
-                self.models[True] = KModel().to('cuda').eval()
-            
-            # Initialize pipelines for languages a and b
-            print("Loading pipelines...")
-            self.pipelines = {
-                lang_code: KPipeline(lang_code=lang_code, model=False) 
-                for lang_code in 'ab'
-            }
-            
-            # Add custom pronunciations
-            self.pipelines['a'].g2p.lexicon.golds['kokoro'] = 'kˈOkəɹO'
-            self.pipelines['b'].g2p.lexicon.golds['kokoro'] = 'kˈQkəɹQ'
-            
-            # Preload some voices (not all to save memory and startup time)
-            print("Loading sample voices...")
-            sample_voices = ['af_heart', 'am_michael', 'bf_emma', 'bm_george']
-            for voice_id in sample_voices:
-                if voice_id in [v for v in self.CHOICES.values()]:
-                    self.pipelines[voice_id[0]].load_voice(voice_id)
-                    
-            self.initialized = True
-            print("TTS Service initialized successfully")
-            
-        except Exception as e:
-            print(f"Error initializing TTS service: {e}")
-            print("Falling back to mock implementation...")
-            self.initialized = False
+        self.initialization_in_progress = True
+        
+        def _async_initialize():
+            try:
+                print("Starting TTS service initialization...")
+                
+                # Try to import and initialize the minimum required components
+                from kokoro import KModel, KPipeline
+                
+                # Initialize models (start with CPU only to be safe)
+                print("Loading CPU model...")
+                self.models[False] = KModel().to('cpu').eval()
+                
+                # Only load GPU model if we have sufficient resources
+                if self.cuda_available:
+                    try:
+                        print("Loading GPU model...")
+                        self.models[True] = KModel().to('cuda').eval()
+                        print("GPU model loaded successfully")
+                    except Exception as gpu_error:
+                        print(f"GPU model loading failed: {gpu_error}, continuing with CPU only")
+                        self.cuda_available = False
+                
+                # Initialize pipelines for languages a and b
+                print("Loading pipelines...")
+                self.pipelines = {
+                    lang_code: KPipeline(lang_code=lang_code, model=False) 
+                    for lang_code in 'ab'
+                }
+                
+                # Add custom pronunciations
+                self.pipelines['a'].g2p.lexicon.golds['kokoro'] = 'kˈOkəɹO'
+                self.pipelines['b'].g2p.lexicon.golds['kokoro'] = 'kˈQkəɹQ'
+                
+                # Don't preload voices during startup - do it on demand
+                print("TTS Service initialized successfully (voices will load on demand)")
+                self.initialized = True
+                self.initialization_error = None
+                
+            except Exception as e:
+                error_msg = f"Error initializing TTS service: {e}"
+                print(error_msg)
+                self.initialization_error = str(e)
+                self.initialized = False
+            finally:
+                self.initialization_in_progress = False
+        
+        # Run initialization in background thread to not block startup
+        thread = threading.Thread(target=_async_initialize, daemon=True)
+        thread.start()
+        
+        # Give it a few seconds to initialize, but don't block indefinitely
+        thread.join(timeout=30)  # Wait maximum 30 seconds
+        
+        if self.initialization_in_progress:
+            print("TTS initialization taking longer than expected, will continue in background...")
     
     def get_voices(self):
         """Get list of available voices"""
@@ -117,13 +139,19 @@ class TTSService:
     
     def generate_speech(self, text: str, voice: str = "af_heart", speed: float = 1.0, use_gpu: bool = None) -> Tuple[str, str]:
         """Generate speech from text"""
+        # Wait for initialization to complete if it's in progress
+        max_wait = 60  # Maximum 60 seconds
+        waited = 0
+        while self.initialization_in_progress and waited < max_wait:
+            time.sleep(1)
+            waited += 1
+        
         if not self.initialized:
-            self.initialize()
-            
-        if not self.initialized:
-            # Return a mock response for testing
-            print("TTS service not available, generating mock audio...")
-            return self._generate_mock_audio(text), f"Mock tokens for: {text[:50]}..."
+            if self.initialization_error:
+                print(f"TTS service failed to initialize: {self.initialization_error}")
+            else:
+                print("TTS service not initialized, using mock audio")
+            return self._generate_mock_audio(text), f"Service unavailable - Mock tokens for: {text[:50]}..."
         
         # Validate voice
         if voice not in [v for v in self.CHOICES.values()]:
@@ -142,6 +170,7 @@ class TTSService:
             
             # Load voice if not already loaded
             if voice not in getattr(pipeline, '_loaded_voices', set()):
+                print(f"Loading voice: {voice}")
                 pipeline.load_voice(voice)
                 if not hasattr(pipeline, '_loaded_voices'):
                     pipeline._loaded_voices = set()

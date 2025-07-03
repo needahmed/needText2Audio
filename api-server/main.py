@@ -48,13 +48,24 @@ app.mount("/audio", StaticFiles(directory=str(AUDIO_DIR)), name="audio")
 @app.on_event("startup")
 async def startup_event():
     """Initialize TTS service on startup"""
-    print("Initializing TTS service...")
-    tts_service.initialize()
+    print("Starting Kokoro TTS API server...")
+    try:
+        print("Initializing TTS service...")
+        tts_service.initialize()
+        print("TTS service initialization started")
+    except Exception as e:
+        print(f"Warning: TTS service initialization failed: {e}")
+        print("Server will start anyway, TTS will use fallback mode")
 
 @app.get("/")
 async def root():
     """Root endpoint"""
-    return {"message": "Kokoro TTS API is running!"}
+    return {
+        "message": "Kokoro TTS API is running!",
+        "status": "healthy",
+        "tts_initialized": tts_service.initialized,
+        "cuda_available": tts_service.cuda_available
+    }
 
 @app.get("/api/voices", response_model=VoicesResponse)
 async def get_voices():
@@ -100,10 +111,18 @@ async def text_to_speech(request: TTSRequest):
 @app.get("/api/health")
 async def health_check():
     """Health check endpoint"""
+    status = "healthy" if tts_service.initialized else "degraded"
+    if tts_service.initialization_in_progress:
+        status = "initializing"
+    elif tts_service.initialization_error:
+        status = "error"
+    
     return {
-        "status": "healthy",
+        "status": status,
         "service": "Kokoro TTS API",
         "initialized": tts_service.initialized,
+        "initializing": tts_service.initialization_in_progress,
+        "error": tts_service.initialization_error,
         "cuda_available": tts_service.cuda_available
     }
 
