@@ -111,20 +111,17 @@ async def text_to_speech(request: TTSRequest):
 @app.get("/api/health")
 async def health_check():
     """Health check endpoint"""
-    status = "healthy" if tts_service.initialized else "degraded"
-    if tts_service.initialization_in_progress:
-        status = "initializing"
-    elif tts_service.initialization_error:
-        status = "error"
-    
+    tts_status = tts_service.get_status()
     return {
-        "status": status,
-        "service": "Kokoro TTS API",
-        "initialized": tts_service.initialized,
-        "initializing": tts_service.initialization_in_progress,
-        "error": tts_service.initialization_error,
-        "cuda_available": tts_service.cuda_available
+        "status": "ok",
+        "tts": tts_status,
+        "message": "API server is running"
     }
+
+@app.get("/api/status")
+async def get_status():
+    """Get detailed service status"""
+    return tts_service.get_status()
 
 @app.delete("/api/audio/{filename}")
 async def delete_audio(filename: str):
