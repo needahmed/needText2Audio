@@ -145,8 +145,11 @@ class TTSService:
         
         return voices
     
-    def generate_speech(self, text: str, voice: str = "af_heart", speed: float = 1.0) -> Tuple[str, str]:
-        """Generate speech from text"""
+    def generate_speech(self, text: str, voice: str = "af_heart", speed: float = 1.0, use_gpu: bool = True) -> Tuple[str, str]:
+        """Generate speech from text.
+        Note: `use_gpu` is currently accepted for API compatibility but is not
+        used; the service generates audio on CPU for stability and fallback.
+        """
         # Check if service is ready
         if not self.initialized:
             if self.initialization_in_progress:
